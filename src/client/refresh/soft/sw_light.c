@@ -48,20 +48,16 @@ R_MarkLights (dlight_t *light, int bit, mnode_t *node, int r_dlightframecount)
 	splitplane = node->plane;
 	dist = DotProduct (light->origin, splitplane->normal) - splitplane->dist;
 
-	//=====
-	//PGM
-	i=light->intensity;
-	if(i<0)
-		i=-i;
-	//PGM
-	//=====
+	i = light->intensity;
+	if( i< 0)
+		i = -i;
 
-	if (dist > i)	// PGM (dist > light->intensity)
+	if (dist > i)	// (dist > light->intensity)
 	{
 		R_MarkLights (light, bit, node->children[0], r_dlightframecount);
 		return;
 	}
-	if (dist < -i)	// PGM (dist < -light->intensity)
+	if (dist < -i)	// (dist < -light->intensity)
 	{
 		R_MarkLights (light, bit, node->children[1], r_dlightframecount);
 		return;
@@ -269,7 +265,7 @@ R_LightPoint (const entity_t *currententity, vec3_t p, vec3_t color)
 //===================================================================
 
 
-unsigned	blocklights[1024];	// allow some very large lightmaps
+light_t	*blocklights = NULL, *blocklight_max = NULL;
 
 /*
 ===============
@@ -289,15 +285,22 @@ R_AddDynamicLights (drawsurf_t* drawsurf)
 	int		smax, tmax;
 	mtexinfo_t	*tex;
 	dlight_t	*dl;
-	int		negativeLight;	//PGM
+	int		negativeLight;
 
 	surf = drawsurf->surf;
 	smax = (surf->extents[0]>>4)+1;
 	tmax = (surf->extents[1]>>4)+1;
 	tex = surf->texinfo;
 
+	if (blocklight_max <= blocklights + smax*tmax)
+	{
+		r_outoflights = true;
+		return;
+	}
+
 	for (lnum=0 ; lnum<r_newrefdef.num_dlights ; lnum++)
 	{
+		light_t *plightdest = blocklights;
 		if (!(surf->dlightbits & (1<<lnum)))
 			continue;	// not lit by this light
 
@@ -305,14 +308,12 @@ R_AddDynamicLights (drawsurf_t* drawsurf)
 		rad = dl->intensity;
 
 		//=====
-		//PGM
 		negativeLight = 0;
 		if(rad < 0)
 		{
 			negativeLight = 1;
 			rad = -rad;
 		}
-		//PGM
 		//=====
 
 		dist = DotProduct (dl->origin, surf->plane->normal) -
@@ -351,21 +352,20 @@ R_AddDynamicLights (drawsurf_t* drawsurf)
 					dist = td + (sd>>1);
 
 				//====
-				//PGM
 				if(!negativeLight)
 				{
 					if (dist < minlight)
-						blocklights[t*smax + s] += (rad - dist)*256;
+						*plightdest += (rad - dist)*256;
 				}
 				else
 				{
 					if (dist < minlight)
-						blocklights[t*smax + s] -= (rad - dist)*256;
-					if(blocklights[t*smax + s] < minlight)
-						blocklights[t*smax + s] = minlight;
+						*plightdest -= (rad - dist)*256;
+					if(*plightdest < minlight)
+						*plightdest = minlight;
 				}
-				//PGM
 				//====
+				plightdest ++;
 			}
 		}
 	}
@@ -391,18 +391,20 @@ R_BuildLightMap (drawsurf_t* drawsurf)
 	smax = (surf->extents[0]>>4)+1;
 	tmax = (surf->extents[1]>>4)+1;
 	size = smax*tmax;
+	if (blocklight_max <= blocklights + size)
+	{
+		r_outoflights = true;
+		return;
+	}
 
 	if (r_fullbright->value || !r_worldmodel->lightdata)
 	{
-		for (i=0 ; i<size ; i++)
-			blocklights[i] = 0;
+		memset(blocklights, 0, size * sizeof(light_t));
 		return;
 	}
 
 	// clear to no light
-	for (i=0 ; i<size ; i++)
-		blocklights[i] = 0;
-
+	memset(blocklights, 0, size * sizeof(light_t));
 
 	// add all the lightmaps
 	lightmap = surf->samples;

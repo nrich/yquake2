@@ -184,7 +184,7 @@ TurbulentPow2
 =============
 */
 void
-TurbulentPow2 (espan_t *pspan)
+TurbulentPow2 (espan_t *pspan, float d_ziorigin, float d_zistepu, float d_zistepv)
 {
 	float	spancountminus1;
 	float	sdivzpow2stepu, tdivzpow2stepu, zipow2stepu;
@@ -331,7 +331,6 @@ TurbulentPow2 (espan_t *pspan)
 }
 
 //====================
-//PGM
 /*
 =============
 NonTurbulentPow2 - this is for drawing scrolling textures. they're warping water textures
@@ -339,7 +338,7 @@ NonTurbulentPow2 - this is for drawing scrolling textures. they're warping water
 =============
 */
 void
-NonTurbulentPow2 (espan_t *pspan)
+NonTurbulentPow2 (espan_t *pspan, float d_ziorigin, float d_zistepu, float d_zistepv)
 {
 	float spancountminus1;
 	float sdivzpow2stepu, tdivzpow2stepu, zipow2stepu;
@@ -484,7 +483,7 @@ NonTurbulentPow2 (espan_t *pspan)
 
 	} while ((pspan = pspan->pnext) != NULL);
 }
-//PGM
+
 //====================
 
 // Enable custom filtering
@@ -591,7 +590,7 @@ D_DrawSpansPow2
 =============
 */
 void
-D_DrawSpansPow2 (espan_t *pspan)
+D_DrawSpansPow2 (espan_t *pspan, float d_ziorigin, float d_zistepu, float d_zistepv)
 {
 	int 	spancount;
 	pixel_t	*pbase;
@@ -743,7 +742,7 @@ D_DrawZSpans
 =============
 */
 void
-D_DrawZSpans (espan_t *pspan)
+D_DrawZSpans (espan_t *pspan, float d_ziorigin, float d_zistepu, float d_zistepv)
 {
 	zvalue_t	izistep;
 	int		safe_step;

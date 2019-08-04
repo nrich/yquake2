@@ -30,7 +30,7 @@
 #define DOWNLOAD_H
 
 // Number of max. parallel downloads.
-#define MAX_HTTP_HANDLES 1
+#define MAX_HTTP_HANDLES 4
 
 #include <curl/curl.h>
 #include "../../../common/header/common.h"
@@ -60,6 +60,15 @@ typedef struct dlhandle_s
 	char *tempBuffer;
 } dlhandle_t;
 
+typedef struct dlquirks_s
+{
+	qboolean error;
+	qboolean filelist;
+	char gamedir[MAX_QPATH];
+} dlquirks_t;
+
+extern dlquirks_t dlquirks;
+
 extern cvar_t *cl_http_downloads;
 extern cvar_t *cl_http_filelists;
 extern cvar_t *cl_http_proxy;
@@ -67,7 +76,7 @@ extern cvar_t *cl_http_max_connections;
 
 void CL_CancelHTTPDownloads(qboolean permKill);
 void CL_InitHTTPDownloads(void);
-qboolean CL_QueueHTTPDownload(const char *quakePath);
+qboolean CL_QueueHTTPDownload(const char *quakePath, qboolean gamedirForFilelist);
 void CL_RunHTTPDownloads(void);
 qboolean CL_PendingHTTPDownloads(void);
 void CL_SetHTTPServer(const char *URL);

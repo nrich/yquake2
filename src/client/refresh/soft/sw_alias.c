@@ -232,7 +232,7 @@ R_AliasPreparePoints (const entity_t *currententity, finalvert_t *verts, const f
 
 	if ((verts + s_pmdl->num_xyz) >= verts_max)
 	{
-		r_outofverts += s_pmdl->num_xyz - (verts_max - verts);
+		r_outofverts = true;
 		return;
 	}
 
@@ -404,7 +404,7 @@ R_AliasTransformFinalVerts(const entity_t *currententity, int numpoints, finalve
 
 		plightnormal = r_avertexnormals[newv->lightnormalindex];
 
-		// PMM - added double damage shell
+		// added double damage shell
 		if ( currententity->flags & ( RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) )
 		{
 			lerped_vert[0] += plightnormal[0] * POWERSUIT_SCALE;
@@ -496,8 +496,8 @@ R_AliasSetupSkin(const entity_t *currententity, const model_t *currentmodel)
 		skinnum = currententity->skinnum;
 		if ((skinnum >= s_pmdl->num_skins) || (skinnum < 0))
 		{
-			R_Printf(PRINT_ALL, "R_AliasSetupSkin %s: no such skin # %d\n",
-				currentmodel->name, skinnum);
+			R_Printf(PRINT_ALL, "%s %s: no such skin # %d\n",
+				__func__, currentmodel->name, skinnum);
 			skinnum = 0;
 		}
 
@@ -624,14 +624,14 @@ R_AliasSetupFrames(const entity_t *currententity, const model_t *currentmodel, d
 
 	if ( ( thisframe >= pmdl->num_frames ) || ( thisframe < 0 ) )
 	{
-		R_Printf(PRINT_ALL, "R_AliasSetupFrames %s: no such thisframe %d\n",
-			currentmodel->name, thisframe);
+		R_Printf(PRINT_ALL, "%s %s: no such thisframe %d\n",
+			__func__, currentmodel->name, thisframe);
 		thisframe = 0;
 	}
 	if ( ( lastframe >= pmdl->num_frames ) || ( lastframe < 0 ) )
 	{
-		R_Printf(PRINT_ALL, "R_AliasSetupFrames %s: no such lastframe %d\n",
-			currentmodel->name, lastframe);
+		R_Printf(PRINT_ALL, "%s %s: no such lastframe %d\n",
+			__func__, currentmodel->name, lastframe);
 		lastframe = 0;
 	}
 
@@ -719,8 +719,8 @@ R_AliasDrawModel(entity_t *currententity, const model_t *currentmodel)
 			return;
 		}
 
-		float fov = 2.0*tan(r_gunfov->value*((4.0/3.0)*M_PI/360.0));
-		aliasxscale = ((float)r_refdef.vrect.width / fov) * r_aliasuvscale;
+		float gunfov = 2 * tan((float)r_gunfov->value / 360 * M_PI);
+		aliasxscale = ((float)r_refdef.vrect.width / gunfov) * r_aliasuvscale;
 		aliasyscale = aliasxscale;
 
 		if ( r_lefthand->value == 1.0F )
@@ -762,16 +762,16 @@ R_AliasDrawModel(entity_t *currententity, const model_t *currentmodel)
 	/*
 	** select the proper span routine based on translucency
 	*/
-	// PMM - added double damage shell
-	// PMM - reordered to handle blending
+	// added double damage shell
+	// reordered to handle blending
 	if ( currententity->flags & ( RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM) )
 	{
 		int		color;
 
-		// PMM - added double
+		// added double
 		color = currententity->flags & ( RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE | RF_SHELL_DOUBLE | RF_SHELL_HALF_DAM);
-		// PMM - reordered, new shells after old shells (so they get overriden)
 
+		// reordered, new shells after old shells (so they get overriden)
 		if ( color == RF_SHELL_RED )
 			r_aliasblendcolor = SHELL_RED_COLOR;
 		else if ( color == RF_SHELL_GREEN )
@@ -784,40 +784,13 @@ R_AliasDrawModel(entity_t *currententity, const model_t *currentmodel)
 			r_aliasblendcolor = SHELL_RB_COLOR;
 		else if ( color == (RF_SHELL_BLUE | RF_SHELL_GREEN) )
 			r_aliasblendcolor = SHELL_BG_COLOR;
-		// PMM - added this .. it's yellowish
+		// added this .. it's yellowish
 		else if ( color == (RF_SHELL_DOUBLE) )
 			r_aliasblendcolor = SHELL_DOUBLE_COLOR;
 		else if ( color == (RF_SHELL_HALF_DAM) )
 			r_aliasblendcolor = SHELL_HALF_DAM_COLOR;
-		// pmm
 		else
 			r_aliasblendcolor = SHELL_WHITE_COLOR;
-		/*
-		if ( color & RF_SHELL_RED )
-		{
-			if ( ( color & RF_SHELL_BLUE) && ( color & RF_SHELL_GREEN) )
-				r_aliasblendcolor = SHELL_WHITE_COLOR;
-			else if ( color & (RF_SHELL_BLUE | RF_SHELL_DOUBLE))
-				r_aliasblendcolor = SHELL_RB_COLOR;
-			else
-				r_aliasblendcolor = SHELL_RED_COLOR;
-		}
-		else if ( color & RF_SHELL_BLUE)
-		{
-			if ( color & RF_SHELL_DOUBLE )
-				r_aliasblendcolor = SHELL_CYAN_COLOR;
-			else
-				r_aliasblendcolor = SHELL_BLUE_COLOR;
-		}
-		else if ( color & (RF_SHELL_DOUBLE) )
-			r_aliasblendcolor = SHELL_DOUBLE_COLOR;
-		else if ( color & (RF_SHELL_HALF_DAM) )
-			r_aliasblendcolor = SHELL_HALF_DAM_COLOR;
-		else if ( color & RF_SHELL_GREEN )
-			r_aliasblendcolor = SHELL_GREEN_COLOR;
-		else
-			r_aliasblendcolor = SHELL_WHITE_COLOR;
-		*/
 
 		if ( currententity->alpha > 0.33 )
 			d_pdrawspans = R_PolysetDrawSpansConstant8_66;

@@ -36,6 +36,8 @@ cvar_t *cl_http_filelists;
 cvar_t *cl_http_proxy;
 cvar_t *cl_http_max_connections;
 
+dlquirks_t dlquirks = { .error = false, .filelist = true, .gamedir = '\0' };
+
 typedef enum
 {
 	HTTPDL_ABORT_NONE,
@@ -47,6 +49,7 @@ static CURLM  *multi = NULL;
 static int handleCount = 0;
 static int pendingCount = 0;
 static int abortDownloads = HTTPDL_ABORT_NONE;
+static qboolean downloadingPak = false;
 static qboolean	httpDown = false;
 
 // --------
@@ -84,7 +87,13 @@ static size_t CL_HTTP_Recv(void *ptr, size_t size, size_t nmemb, void *stream)
 	else if (dl->position + bytes >= dl->fileSize)
 	{
 		dl->fileSize *= 2;
-		realloc(dl->tempBuffer, dl->fileSize);
+		char *tempBuffer = realloc(dl->tempBuffer, dl->fileSize);
+		if (!tempBuffer) {
+			free(dl->tempBuffer);
+			dl->tempBuffer = 0;
+			return 0;
+		}
+		dl->tempBuffer = tempBuffer;
 	}
 
 	memcpy (dl->tempBuffer + dl->position, ptr, bytes);
@@ -164,7 +173,8 @@ static qboolean CL_RemoveFromQueue(dlqueue_t *entry)
 		if (last->next == entry)
 		{
 			last->next = cur->next;
-			Z_Free(cur);
+			free(cur);
+			cur = NULL;
 
 			return true;
 		}
@@ -202,7 +212,15 @@ static void CL_StartHTTPDownload (dlqueue_t *entry, dlhandle_t *dl)
 		Com_sprintf (dl->filePath, sizeof(dl->filePath), "%s/%s", FS_Gamedir(), entry->quakePath);
 
 		// Full path to the remote file.
-		Com_sprintf (tempFile, sizeof(tempFile), "%s/%s", cl.gamedir, entry->quakePath);
+		if (dlquirks.gamedir[0] == '\0')
+		{
+			Com_sprintf (tempFile, sizeof(tempFile), "/%s", entry->quakePath);
+		}
+		else
+		{
+			Com_sprintf (tempFile, sizeof(tempFile), "/%s/%s", dlquirks.gamedir, entry->quakePath);
+		}
+
 		CL_EscapeHTTPPath (tempFile, escapedFilePath);
 
 		// Create a temporary file where the downloaded data is stored...
@@ -410,7 +428,7 @@ static void CL_CheckAndQueueDownload(char *path)
 		if (!exists)
 		{
 			// Queue the file for download.
-			CL_QueueHTTPDownload(path);
+			CL_QueueHTTPDownload(path, false);
 		}
 	}
 	else
@@ -582,18 +600,34 @@ static void CL_FinishHTTPDownload(void)
 				{
 					Com_Printf("HTTP download: %s - File Not Found\n", dl->queueEntry->quakePath);
 
-					// We got a 404, remove the target file.
+					// We got a 404, reset pak downloading state...
+					size_t len = strlen(dl->queueEntry->quakePath);
+
+					if (!strcmp(dl->queueEntry->quakePath + len - 4, ".pak")
+							|| !strcmp(dl->queueEntry->quakePath + len - 4, ".pk2")
+							|| !strcmp(dl->queueEntry->quakePath + len - 4, ".pk3")
+							|| !strcmp(dl->queueEntry->quakePath + len - 4, ".zip"))
+					{
+						downloadingPak = false;
+					}
+
+					// ...remove the target file...
 					if (isFile)
 					{
 						Sys_Remove(dl->filePath);
-						isFile = false;
 					}
 
-					// ...and remove it from the CURL multihandle.
+					// ...remove it from the CURL multihandle...
 					qcurl_multi_remove_handle(multi, dl->curl);
 					CL_RemoveFromQueue(dl->queueEntry);
 					dl->queueEntry = NULL;
 
+					// ...and communicate the error.
+					if (isFile)
+					{
+						dlquirks.error = true;
+						isFile = false;
+					}
 
 					break;
 
@@ -620,7 +654,18 @@ static void CL_FinishHTTPDownload(void)
 			case CURLE_COULDNT_RESOLVE_PROXY:
 				Com_Printf("HTTP download: %s - Server broken, aborting\n", dl->queueEntry->quakePath);
 
-				// The download failed. Remove the temporary file...
+				// The download failed. Reset pak downloading state...
+				size_t len = strlen(dl->queueEntry->quakePath);
+
+				if (!strcmp(dl->queueEntry->quakePath + len - 4, ".pak")
+						|| !strcmp(dl->queueEntry->quakePath + len - 4, ".pk2")
+						|| !strcmp(dl->queueEntry->quakePath + len - 4, ".pk3")
+						|| !strcmp(dl->queueEntry->quakePath + len - 4, ".zip"))
+				{
+					downloadingPak = false;
+				}
+
+				// remove the temporary file...
 				if (isFile)
 				{
 					Sys_Remove(dl->filePath);
@@ -649,7 +694,7 @@ static void CL_FinishHTTPDownload(void)
 			default:
 				Com_Printf ("HTTP download: cURL error - %s\n", qcurl_easy_strerror(result));
 
-				// The download failed. Remove the temporary file...
+				// The download failed. Clear the Remove the temporary file...
 				if (isFile)
 				{
 					Sys_Remove(dl->filePath);
@@ -680,6 +725,7 @@ static void CL_FinishHTTPDownload(void)
 			{
 				FS_AddPAKFromGamedir(dl->queueEntry->quakePath);
 				CL_ReVerifyHTTPQueue ();
+				downloadingPak = false;
 			}
 
 			CL_RemoveFromQueue(dl->queueEntry);
@@ -756,6 +802,16 @@ static void CL_StartNextHTTPDownload(void)
 
 			CL_StartHTTPDownload(q, dl);
 
+			size_t len = strlen(q->quakePath);
+
+			if (!strcmp(q->quakePath + len - 4, ".pak")
+					|| !strcmp(q->quakePath + len - 4, ".pk2")
+					|| !strcmp(q->quakePath + len - 4, ".pk3")
+					|| !strcmp(q->quakePath + len - 4, ".zip"))
+			{
+				downloadingPak = true;
+			}
+
 			break;
 		}
 	}
@@ -803,7 +859,7 @@ void CL_HTTP_Cleanup(qboolean fullShutdown)
 
 		if (dl->tempBuffer)
 		{
-			Z_Free (dl->tempBuffer);
+			free(dl->tempBuffer);
 			dl->tempBuffer = NULL;
 		}
 
@@ -831,7 +887,8 @@ void CL_HTTP_Cleanup(qboolean fullShutdown)
 
 		if (last)
 		{
-			Z_Free (last);
+			free(last);
+			last = NULL;
 		}
 
 		last = q;
@@ -839,7 +896,8 @@ void CL_HTTP_Cleanup(qboolean fullShutdown)
 
 	if (last)
 	{
-		Z_Free (last);
+		free(last);
+		last = NULL;
 	}
 
 	// Cleanup CURL multihandle.
@@ -892,7 +950,8 @@ void CL_SetHTTPServer (const char *URL)
 
 		if (last)
 		{
-			Z_Free (last);
+			free(last);
+			last = NULL;
 		}
 
 		last = q;
@@ -900,7 +959,8 @@ void CL_SetHTTPServer (const char *URL)
 
 	if (last)
 	{
-		Z_Free (last);
+		free(last);
+		last = NULL;
 	}
 
 	memset (&cls.downloadQueue, 0, sizeof(cls.downloadQueue));
@@ -909,7 +969,19 @@ void CL_SetHTTPServer (const char *URL)
 	abortDownloads = HTTPDL_ABORT_NONE;
 	handleCount = pendingCount = 0;
 	cls.downloadServerRetry[0] = 0;
-	Q_strlcpy(cls.downloadServer, URL, sizeof(cls.downloadServer) - 1);
+	dlquirks.error = false;
+
+	// Remove trailing / from URL if any.
+	size_t urllen = strlen(URL);
+	char *cleanURL = strdup(URL);
+
+	if (cleanURL[urllen - 1] == '/')
+	{
+		cleanURL[urllen - 1] = '\0';
+	}
+
+	Q_strlcpy(cls.downloadServer, cleanURL, sizeof(cls.downloadServer) - 1);
+	free(cleanURL);
 
 	// Initializes a new multihandle.
 	if (multi)
@@ -961,7 +1033,7 @@ void CL_CancelHTTPDownloads(qboolean permKill)
  * for the requested files are possible. Queues the download
  * and returns true if yes, returns fales if not.
  */
-qboolean CL_QueueHTTPDownload(const char *quakePath)
+qboolean CL_QueueHTTPDownload(const char *quakePath, qboolean gamedirForFilelist)
 {
 	// Not HTTP servers were send by the server, HTTP is disabled
 	// or the client is shutting down and we're wrapping up.
@@ -974,9 +1046,10 @@ qboolean CL_QueueHTTPDownload(const char *quakePath)
 	// the generic(!) filelist.
 	qboolean needList = false;
 
-	if (!cls.downloadQueue.next && cl_http_filelists->value)
+	if (dlquirks.filelist && cl_http_filelists->value)
 	{
 		needList = true;
+		dlquirks.filelist = false;
 	}
 
 	// Queue the download.
@@ -994,7 +1067,7 @@ qboolean CL_QueueHTTPDownload(const char *quakePath)
 		}
 	}
 
-	q->next = Z_TagMalloc(sizeof(*q), 0);
+	q->next = malloc(sizeof(*q));
 	q = q->next;
 	q->next = NULL;
 	q->state = DLQ_STATE_NOT_STARTED;
@@ -1003,7 +1076,17 @@ qboolean CL_QueueHTTPDownload(const char *quakePath)
 	// Let's download the generic filelist if necessary.
 	if (needList)
 	{
-		CL_QueueHTTPDownload("/.filelist");
+		if (gamedirForFilelist)
+		{
+			char fileList[MAX_OSPATH];
+
+			Com_sprintf(fileList, sizeof(fileList), "/%s%s", dlquirks.gamedir, ".filelist");
+			CL_QueueHTTPDownload(fileList, false);
+		}
+		else
+		{
+			CL_QueueHTTPDownload("/.filelist", false);
+		}
 	}
 
 	// If we just queued a .bsp file ask for it's map
@@ -1019,11 +1102,19 @@ qboolean CL_QueueHTTPDownload(const char *quakePath)
 		char listPath[MAX_OSPATH];
 		char filePath[MAX_OSPATH];
 
-		Com_sprintf (filePath, sizeof(filePath), "%s/%s", cl.gamedir, quakePath);
+		if (dlquirks.gamedir[0] == '\0')
+		{
+			Com_sprintf (filePath, sizeof(filePath), "/%s", quakePath);
+		}
+		else
+		{
+			Com_sprintf (filePath, sizeof(filePath), "/%s/%s", dlquirks.gamedir, quakePath);
+		}
+
 		COM_StripExtension (filePath, listPath);
 		Q_strlcat(listPath, ".filelist", sizeof(listPath));
 
-		CL_QueueHTTPDownload(listPath);
+		CL_QueueHTTPDownload(listPath, false);
 	}
 
 	// If we're here CL_FinishHTTPDownload() is guaranteed to be called.
@@ -1088,7 +1179,8 @@ void CL_RunHTTPDownloads(void)
 
 	// Not enough downloads running, start some more.
 	if (pendingCount && abortDownloads == HTTPDL_ABORT_NONE &&
-			handleCount < cl_http_max_connections->value)
+			handleCount < cl_http_max_connections->value &&
+			!downloadingPak)
 	{
 		CL_StartNextHTTPDownload();
 	}

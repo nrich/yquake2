@@ -73,9 +73,9 @@ add_definitions(-DYQ2OSTYPE="${YQ2OSTYPE}")
 
 # Architecture string.
 set(YQ2ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Override CPU architecture")
-string(REGEX REPLACE "amd64" "x86_64" ARCH ${YQ2ARCH})
-string(REGEX REPLACE "i.86" "i386" ARCH ${ARCH})
-string(REGEX REPLACE "^arm.*" "arm" ARCH ${ARCH})
+string(REGEX REPLACE "amd64" "x86_64" ARCH "${YQ2ARCH}")
+string(REGEX REPLACE "i.86" "i386" ARCH "${ARCH}")
+string(REGEX REPLACE "^arm.*" "arm" ARCH "${ARCH}")
 add_definitions(-DYQ2ARCH="${ARCH}")
 
 # Systemwide installation of game assets.
@@ -178,7 +178,6 @@ set(Backends-Unix-Source
 	)
 
 set(Backends-Windows-Source
-	${BACKENDS_SRC_DIR}/generic/frame.c
 	${BACKENDS_SRC_DIR}/windows/icon.rc
 	${BACKENDS_SRC_DIR}/windows/main.c
 	${BACKENDS_SRC_DIR}/windows/network.c
@@ -521,7 +520,7 @@ set(SOFT-Source
 	${REF_SRC_DIR}/soft/sw_model.c
 	${REF_SRC_DIR}/soft/sw_part.c
 	${REF_SRC_DIR}/soft/sw_poly.c
-	${REF_SRC_DIR}/soft/sw_polyse.c
+	${REF_SRC_DIR}/soft/sw_polyset.c
 	${REF_SRC_DIR}/soft/sw_rast.c
 	${REF_SRC_DIR}/soft/sw_scan.c
 	${REF_SRC_DIR}/soft/sw_sprite.c
@@ -535,7 +534,9 @@ set(SOFT-Source
 	)
 
 set(SOFT-Header
-	${REF_SRC_DIR}/constants/adivtab.h
+	${REF_SRC_DIR}/ref_shared.h
+	${REF_SRC_DIR}/files/stb_image.h
+	${REF_SRC_DIR}/files/stb_image_resize.h
 	${REF_SRC_DIR}/soft/header/local.h
 	${REF_SRC_DIR}/soft/header/model.h
 	${COMMON_SRC_DIR}/header/shared.h
@@ -583,7 +584,7 @@ set_target_properties(q2ded PROPERTIES
 	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release
 	)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
-	target_link_libraries(q2ded ${yquake2LinkerFlags} ${yquake2ZLibLinkerFlags} ws2_32 winmm)
+	target_link_libraries(q2ded ${yquake2LinkerFlags} ${yquake2SDLLinkerFlags} ${yquake2ZLibLinkerFlags} ws2_32 winmm)
 else()
 	target_link_libraries(q2ded ${yquake2LinkerFlags} ${yquake2ServerLinkerFlags} ${yquake2ZLibLinkerFlags})
 endif()
